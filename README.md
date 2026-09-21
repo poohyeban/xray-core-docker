@@ -16,7 +16,7 @@ python3 scripts/prepare.py
 # 自行创建 xray/config/config.json；若配置使用证书，也自行放入 xray/certs/。
 # 不要上传自己的配置和证书。
 chmod 600 xray/config/config.json
-# 按需要配置 VPS 防火墙，放行你选择的入站端口（默认 TCP 443）。
+# 按需要配置 VPS 防火墙，放行 config.json 中实际配置的入站端口。
 docker compose up -d --wait
 docker compose ps
 ```
@@ -69,7 +69,7 @@ docker compose logs --tail 50 xray-controller geodata-updater
 ## 发布隐私边界
 
 - `.gitignore` 排除所有运行目录；两个 `.dockerignore` 对构建上下文使用文件白名单。
-- CI 首先检查追踪文件白名单及常见凭据，并在测试 runner 上临时使用不包含凭据、不监听入站端口的临时测试配置。
+- CI 首先检查追踪文件白名单及常见凭据，并在测试 runner 上使用不包含凭据、不监听入站端口的临时测试配置。
 - 构建使用 Docker CLI，关闭 provenance，不上传构建记录和运行配置附件。
 - 提交使用公开账户别名及 GitHub noreply 邮箱；推送事件中的邮箱在其他步骤前加入日志遮罩。
 - 自动扫描不能保证识别任意秘密；发布前仍应审阅 Git 历史、日志与镜像。不要通过修改扫描白名单来加入生产配置。
