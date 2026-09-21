@@ -1,0 +1,72 @@
+name: Build, test and publish
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: xray-publish-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      CONTROLLER_IMAGE: ghcr.io/poohyeban/xray-core-docker/controller:sha-${{ github.sha }}
+      UPDATER_IMAGE: ghcr.io/poohyeban/xray-core-docker/geodata-updater:sha-${{ github.sha }}
+    steps:
+      - name: Mask event email addresses before any other actions
+        shell: python
+        run: |
+          import json, os, re
+          with open(os.environ['GITHUB_EVENT_PATH']) as stream:
+              event = json.load(stream)
+          for email in sorted(set(re.findall(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', json.dumps(event)))):
+              print('::add-mask::' + email)
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Check publish allowlist and scripts
+        run: |
+          python3 scripts/privacy_check.py
+          python3 scripts/test_prepare.py
+          for script in xray-geodata-updater/*.sh; do bash -n "$script"; done
+          docker compose config --quiet
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - name: Build isolated contexts without provenance or build-record uploads
+        run: |
+          docker buildx build --load --platform linux/amd64 --provenance=false --tag "$CONTROLLER_IMAGE" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" xray-controller
+          docker buildx build --load --platform linux/amd64 --provenance=false --tag "$UPDATER_IMAGE" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" xray-geodata-updater
+      - name: Prepare geodata and a CI-only configuration
+        run: |
+          docker compose pull xray
+          sudo --preserve-env=CONTROLLER_IMAGE,UPDATER_IMAGE python3 scripts/prepare.py --skip-pull
+          # Only for CI: no inbound listener, no credentials, no production config.
+          printf '%s\n' '{"log":{"loglevel":"warning"},"inbounds":[],"outbounds":[{"protocol":"freedom","tag":"direct"},{"protocol":"blackhole","tag":"block"}],"routing":{"rules":[{"type":"field","ip":["geoip:private"],"outboundTag":"block"}]}}' | sudo tee xray/config/config.json >/dev/null
+          sudo chmod 600 xray/config/config.json
+      - name: Verify healthy stack and controller apply
+        run: |
+          docker compose up -d --wait --wait-timeout 180
+          docker compose exec -T geodata-updater curl --fail --silent --show-error \
+            --unix-socket /run/xray-control/control.sock -X POST http://localhost/apply
+          docker compose exec -T geodata-updater /usr/local/bin/update-geodata.sh
+      - name: Stop disposable test stack
+        if: always()
+        run: |
+          docker compose down --volumes --remove-orphans
+          sudo rm -rf -- xray xray-geodata-updater/log
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish only the tested images
+        run: |
+          for image in "$CONTROLLER_IMAGE" "$UPDATER_IMAGE"; do
+            docker push "$image"
+            docker tag "$image" "${image%:*}:latest"
+            docker push "${image%:*}:latest"
+          done

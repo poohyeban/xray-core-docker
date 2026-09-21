@@ -1,0 +1,10 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+GEODATA_DIR=/geodata
+BASE_URL=https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download
+CONTROL_SOCKET=/run/xray-control/control.sock
+
+* * * * * touch /var/log/xray-geodata-updater/cron-heartbeat
+15 4 * * * /usr/local/bin/update-geodata.sh >> /var/log/xray-geodata-updater/update.log 2>&1
+30 3 * * * /usr/sbin/logrotate -s /var/log/xray-geodata-updater/logrotate.status /etc/logrotate.d/xray-stack >> /var/log/xray-geodata-updater/logrotate.log 2>&1

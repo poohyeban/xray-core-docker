@@ -1,0 +1,7 @@
+*
+!entrypoint.sh
+!healthcheck.sh
+!update-geodata.sh
+!bootstrap-geodata.sh
+!root.cron
+!logrotate.conf

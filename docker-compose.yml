@@ -1,0 +1,105 @@
+services:
+  xray:
+    image: ${XRAY_IMAGE:-ghcr.io/xtls/xray-core:26.3.27@sha256:592ec4d11f656db95598d01e76dbcc6e002d67360b96a5436500a938230f52c7}
+    restart: unless-stopped
+    network_mode: host
+    user: "0:0"
+    read_only: true
+    labels:
+      org.xray.controller.role: core
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    volumes:
+      - ./xray/config:/usr/local/etc/xray:ro
+      - ./xray/geodata:/usr/local/share/xray:ro
+      - ./xray/log:/var/log/xray
+      - ./xray/certs:/etc/xray/certs:ro
+    command: ["run", "-c", "/usr/local/etc/xray/config.json"]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/xray", "run", "-test", "-c", "/usr/local/etc/xray/config.json"]
+      interval: 5m
+      timeout: 15s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  xray-controller:
+    image: ${CONTROLLER_IMAGE:-ghcr.io/poohyeban/xray-core-docker/controller:latest}
+    restart: unless-stopped
+    network_mode: none
+    user: "0:0"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 32
+    mem_limit: 64m
+    depends_on:
+      xray:
+        condition: service_started
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - xray-control-socket:/run/xray-control
+    healthcheck:
+      test: ["CMD", "/xray-controller", "healthcheck"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  geodata-updater:
+    image: ${UPDATER_IMAGE:-ghcr.io/poohyeban/xray-core-docker/geodata-updater:latest}
+    restart: unless-stopped
+    user: "0:0"
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    environment:
+      TZ: ${TZ:-Asia/Taipei}
+    depends_on:
+      xray-controller:
+        condition: service_healthy
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    volumes:
+      - ./xray/geodata:/geodata
+      - ./xray/log:/var/log/xray
+      - ./xray-geodata-updater/log:/var/log/xray-geodata-updater
+      - xray-control-socket:/run/xray-control
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 1m
+      timeout: 3s
+      retries: 3
+      start_period: 3m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  xray-control-socket:

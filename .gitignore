@@ -1,0 +1,20 @@
+# Local credentials and runtime data never belong in Git.
+.env
+.env.*
+!.env.example
+/xray/
+/xray-geodata-updater/log/
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
+*.bak*
+*.dat
+*.sha256sum
+*.dockerbuild
+*.tar
+*.zip
+**/target/
+__pycache__/
+.DS_Store
