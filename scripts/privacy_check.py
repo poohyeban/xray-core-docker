@@ -8,8 +8,8 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 ALLOWED_ROOT = {'.gitignore', '.dockerignore', '.env.example', 'README.md', 'docker-compose.yml'}
 ALLOWED = ALLOWED_ROOT | {
-    '.github/workflows/build.yml',
-    'scripts/prepare.py', 'scripts/privacy_check.py', 'scripts/test_prepare.py',
+    '.github/workflows/build.yml', '.github/workflows/audit.yml',
+    'scripts/prepare.py', 'scripts/privacy_check.py', 'scripts/test_prepare.py', 'scripts/audit_images.py',
     'xray-controller/.dockerignore', 'xray-controller/Dockerfile',
     'xray-controller/Cargo.toml', 'xray-controller/Cargo.lock', 'xray-controller/src/main.rs',
     'xray-geodata-updater/.dockerignore', 'xray-geodata-updater/Dockerfile',

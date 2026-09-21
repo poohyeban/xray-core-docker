@@ -1,0 +1,43 @@
+name: Audit published deployment
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Mask event email addresses
+        shell: python
+        run: |
+          import json, os, re
+          with open(os.environ['GITHUB_EVENT_PATH']) as stream:
+              event = json.load(stream)
+          for email in sorted(set(re.findall(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', json.dumps(event)))):
+              print('::add-mask::' + email)
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Authenticate to private packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Inspect published images and history
+        run: |
+          python3 scripts/privacy_check.py
+          docker pull ghcr.io/poohyeban/xray-core-docker/controller:latest
+          docker pull ghcr.io/poohyeban/xray-core-docker/geodata-updater:latest
+          python3 scripts/audit_images.py \
+            ghcr.io/poohyeban/xray-core-docker/controller:latest \
+            ghcr.io/poohyeban/xray-core-docker/geodata-updater:latest
+      - name: Check package metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api users/poohyeban/packages/container/xray-core-docker%2Fcontroller --jq '{name,visibility}'
+          gh api users/poohyeban/packages/container/xray-core-docker%2Fgeodata-updater --jq '{name,visibility}'
+      - name: Logout
+        if: always()
+        run: docker logout ghcr.io
